@@ -121,6 +121,11 @@ class CategoryRepository {
 
 /// Понятные сообщения об ошибках на русском.
 String humanError(Object e) {
+  // Сетевые ошибки проверяем первыми: Supabase Auth заворачивает их в AuthException
+  final raw = e.toString();
+  if (raw.contains('SocketException') || raw.contains('Failed host lookup') || raw.contains('ClientException') || raw.contains('Network is unreachable')) {
+    return 'Нет подключения к интернету. Проверьте сеть и попробуйте снова';
+  }
   if (e is AuthException) {
     final m = e.message.toLowerCase();
     if (m.contains('invalid login credentials')) return 'Неверный email или пароль';
