@@ -11,6 +11,7 @@ import 'data/repositories.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_shell.dart';
 import 'services/notification_service.dart';
+import 'state/offline_mode.dart';
 import 'state/settings_store.dart';
 import 'state/task_store.dart';
 import 'theme.dart';
@@ -23,6 +24,7 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsStore(prefs);
+  final offline = OfflineMode(prefs);
   final notifications = NotificationService();
   await notifications.init();
 
@@ -33,6 +35,7 @@ Future<void> main() async {
         Provider(create: (_) => ProfileRepository()),
         Provider.value(value: notifications),
         ChangeNotifierProvider.value(value: settings),
+        ChangeNotifierProvider.value(value: offline),
         ChangeNotifierProvider(create: (_) => TaskStore(notifications: notifications, settings: settings)),
       ],
       child: const TaskFlowApp(),
@@ -66,17 +69,25 @@ class TaskFlowApp extends StatelessWidget {
 
 /// Показывает экран входа или главный экран в зависимости от сессии (ФТ-2:
 /// сессия сохраняется между запусками — это делает supabase_flutter).
+/// В офлайн-режиме вход не нужен: данные берутся с устройства.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final offline = context.watch<OfflineMode>();
+    final store = context.read<TaskStore>();
+    if (offline.active) {
+      store.useSource(local: offline.data);
+      return const HomeShell(key: ValueKey('offline'));
+    }
     final auth = context.read<AuthRepository>();
     return StreamBuilder<AuthState>(
       stream: auth.changes,
       builder: (context, _) {
         final user = auth.currentUser;
         if (user == null) return const AuthScreen();
+        store.useSource();
         // key по id пользователя: при смене аккаунта главный экран создаётся заново
         return HomeShell(key: ValueKey(user.id));
       },

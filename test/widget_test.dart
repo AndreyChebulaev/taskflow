@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:todo_app/data/local_repositories.dart';
+import 'package:todo_app/data/repositories.dart';
 import 'package:todo_app/models/task.dart';
 import 'package:todo_app/state/settings_store.dart';
 
@@ -138,6 +140,56 @@ void main() {
       final again = SettingsStore(prefs);
       expect(again.themeMode, ThemeMode.dark);
       expect(again.defaultReminder, isNull);
+    });
+  });
+
+  group('Офлайн-режим', () {
+    Future<LocalData> fresh() async {
+      SharedPreferences.setMockInitialValues({});
+      return LocalData(await SharedPreferences.getInstance());
+    }
+
+    test('стартовые данные: 3 категории и задачи', () async {
+      final data = await fresh();
+      await data.seedIfEmpty();
+      expect(data.categories.length, 3);
+      final tasks = await LocalTaskRepository(data).fetchAll();
+      expect(tasks.length, 7);
+      expect(tasks.where((t) => t.isDone).length, 1);
+      await data.seedIfEmpty(); // повторно не добавляет
+      expect(data.categories.length, 3);
+    });
+
+    test('создание, изменение, выполнение и удаление задачи', () async {
+      final repo = LocalTaskRepository(await fresh());
+      final due = DateTime(2026, 11, 1, 18);
+      final t = await repo.create(TaskDraft(title: 'Тест', dueAt: due, priority: TaskPriority.high, reminderOffset: 60));
+      expect(t.title, 'Тест');
+      expect(t.dueAt, due);
+      expect(t.reminderOffset, 60);
+      final u = await repo.update(t.id, TaskDraft.fromTask(t)..title = 'Тест 2');
+      expect(u.title, 'Тест 2');
+      await repo.setDone(t.id, true);
+      expect((await repo.fetchAll()).single.isDone, isTrue);
+      await repo.delete(t.id);
+      expect(await repo.fetchAll(), isEmpty);
+    });
+
+    test('удаление категории оставляет задачи без категории', () async {
+      final data = await fresh();
+      final cats = LocalCategoryRepository(data);
+      final c = await cats.create('Спорт', '#2EC4B6');
+      await LocalTaskRepository(data).create(TaskDraft(title: 'Бег', categoryId: c.id));
+      await cats.delete(c.id);
+      expect(await cats.fetchAll(), isEmpty);
+      expect((await LocalTaskRepository(data).fetchAll()).single.categoryId, isNull);
+    });
+
+    test('повтор названия категории запрещён', () async {
+      final cats = LocalCategoryRepository(await fresh());
+      await cats.create('Спорт', '#2EC4B6');
+      await expectLater(cats.create('спорт', '#FF7A59'), throwsA(isA<DuplicateNameException>()));
+      expect(humanError(const DuplicateNameException()), 'Такое название уже есть');
     });
   });
 }

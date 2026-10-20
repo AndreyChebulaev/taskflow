@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/repositories.dart';
+import '../state/offline_mode.dart';
 import '../state/task_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -21,13 +22,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _name = context.read<ProfileRepository>().fetchName();
+    _name = context.read<OfflineMode>().active
+        ? Future.value('Офлайн-режим')
+        : context.read<ProfileRepository>().fetchName().catchError((_) => null);
   }
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<TaskStore>();
-    final email = context.read<AuthRepository>().currentUser?.email ?? '';
+    final email = store.isOffline ? 'данные хранятся на устройстве' : (context.read<AuthRepository>().currentUser?.email ?? '');
     final week = store.weekStats;
     final weekShare = week.total == 0 ? 0.0 : week.done / week.total;
 

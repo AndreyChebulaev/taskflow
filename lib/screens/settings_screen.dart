@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../data/repositories.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
+import '../state/offline_mode.dart';
 import '../state/settings_store.dart';
 import '../state/task_store.dart';
 import '../theme.dart';
@@ -54,6 +55,17 @@ class SettingsScreen extends StatelessWidget {
     if (picked != null) await settings.setDefaultReminder(picked.value);
   }
 
+  Future<void> _leaveOffline(BuildContext context) async {
+    final ok = await confirmDialog(context,
+        title: 'Выйти из офлайн-режима?', message: 'Задачи офлайн-режима останутся на этом телефоне и будут доступны при следующем входе в него.', action: 'Выйти');
+    if (!ok || !context.mounted) return;
+    final store = context.read<TaskStore>();
+    final offline = context.read<OfflineMode>();
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    store.clear();
+    await offline.stop();
+  }
+
   Future<void> _signOut(BuildContext context) async {
     final ok = await confirmDialog(context, title: 'Выйти из аккаунта?', message: 'Задачи сохранятся и будут доступны после входа.', action: 'Выйти');
     if (!ok || !context.mounted) return;
@@ -72,7 +84,8 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsStore>();
-    final email = context.read<AuthRepository>().currentUser?.email ?? '';
+    final offline = context.watch<OfflineMode>().active;
+    final email = offline ? 'Офлайн-режим — без входа в аккаунт' : (context.read<AuthRepository>().currentUser?.email ?? '');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
@@ -108,19 +121,21 @@ class SettingsScreen extends StatelessWidget {
           const _SectionTitle('АККАУНТ'),
           _Group(children: [
             ListTile(
-              title: const Text('Email', style: TextStyle(fontWeight: FontWeight.w500)),
+              title: Text(offline ? 'Режим' : 'Email', style: const TextStyle(fontWeight: FontWeight.w500)),
               subtitle: Text(email, style: TextStyle(color: context.pal.muted, fontSize: 12)),
             ),
-            Divider(height: 1, indent: 16, endIndent: 16, color: context.pal.line),
-            ListTile(
-              title: const Text('Изменить пароль', style: TextStyle(fontWeight: FontWeight.w500)),
-              trailing: Icon(Icons.chevron_right_rounded, color: context.pal.muted),
-              onTap: () => showDialog(context: context, builder: (_) => const _ChangePasswordDialog()),
-            ),
+            if (!offline) ...[
+              Divider(height: 1, indent: 16, endIndent: 16, color: context.pal.line),
+              ListTile(
+                title: const Text('Изменить пароль', style: TextStyle(fontWeight: FontWeight.w500)),
+                trailing: Icon(Icons.chevron_right_rounded, color: context.pal.muted),
+                onTap: () => showDialog(context: context, builder: (_) => const _ChangePasswordDialog()),
+              ),
+            ],
           ]),
           const SizedBox(height: 32),
           OutlinedButton(
-            onPressed: () => _signOut(context),
+            onPressed: () => offline ? _leaveOffline(context) : _signOut(context),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.coral,
               side: const BorderSide(color: AppColors.coral, width: 1.5),
@@ -128,7 +143,7 @@ class SettingsScreen extends StatelessWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
-            child: const Text('Выйти из аккаунта'),
+            child: Text(offline ? 'Выйти из офлайн-режима' : 'Выйти из аккаунта'),
           ),
           const SizedBox(height: 16),
           Text('TaskFlow · версия 1.0', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: context.pal.muted)),
@@ -264,10 +279,12 @@ class _NotificationCheckState extends State<_NotificationCheck> {
     try {
       final allowed = await n.areEnabled();
       final pending = await n.pendingCount();
-      if (mounted) setState(() {
-        _allowed = allowed;
-        _pending = pending;
-      });
+      if (mounted) {
+        setState(() {
+          _allowed = allowed;
+          _pending = pending;
+        });
+      }
     } catch (_) {}
   }
 

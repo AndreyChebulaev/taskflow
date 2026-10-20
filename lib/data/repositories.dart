@@ -138,6 +138,7 @@ String humanError(Object e) {
     if (m.contains('invalid') && m.contains('email')) return 'Некорректный email';
     return e.message;
   }
+  if (e is DuplicateNameException) return 'Такое название уже есть';
   if (e is PostgrestException) {
     if (e.code == '23505') return 'Такое название уже есть';
     if (e.code == '23514') return 'Недопустимое значение поля';
@@ -148,4 +149,9 @@ String humanError(Object e) {
     return 'Нет подключения к интернету';
   }
   return 'Что-то пошло не так: $s';
+}
+
+/// Повтор названия категории в офлайн-режиме (аналог ошибки 23505 в базе).
+class DuplicateNameException implements Exception {
+  const DuplicateNameException();
 }

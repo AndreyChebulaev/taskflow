@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/local_repositories.dart';
 import '../data/repositories.dart';
 import '../models/category.dart';
 import '../models/task.dart';
@@ -16,8 +17,27 @@ class TaskStore extends ChangeNotifier {
       : _taskRepo = tasks ?? TaskRepository(),
         _catRepo = categories ?? CategoryRepository();
 
-  final TaskRepository _taskRepo;
-  final CategoryRepository _catRepo;
+  TaskRepository _taskRepo;
+  CategoryRepository _catRepo;
+  bool _offline = false;
+
+  bool get isOffline => _offline;
+
+  /// Источник данных: Supabase или устройство (офлайн-режим).
+  /// Вызывается при смене режима до загрузки; списки сбрасываются без перерисовки.
+  void useSource({LocalData? local}) {
+    final offline = local != null;
+    if (offline == _offline) return;
+    _offline = offline;
+    _taskRepo = local != null ? LocalTaskRepository(local) : TaskRepository();
+    _catRepo = local != null ? LocalCategoryRepository(local) : CategoryRepository();
+    notifications?.cancelAll();
+    _tasks = [];
+    _categories = [];
+    error = null;
+    categoryFilter = null;
+    showDone = false;
+  }
   final NotificationService? notifications;
   final SettingsStore? settings;
 

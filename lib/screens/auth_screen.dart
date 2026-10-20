@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/repositories.dart';
+import '../state/offline_mode.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -172,6 +173,23 @@ class _AuthScreenState extends State<AuthScreen> {
                                 ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
                                 : Text(_isRegister ? 'Зарегистрироваться' : 'Войти'),
                           ),
+                          const SizedBox(height: 12),
+                          // Офлайн-режим: приложение работает без сети, данные — на устройстве
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : () => context.read<OfflineMode>().start(),
+                            icon: const Icon(Icons.cloud_off_rounded, size: 20),
+                            label: const Text('Работать без интернета'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.teal,
+                              side: const BorderSide(color: AppColors.teal, width: 1.5),
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text('Без входа в аккаунт: задачи хранятся только на этом телефоне',
+                              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: context.pal.muted)),
                         ],
                       ),
                     ),

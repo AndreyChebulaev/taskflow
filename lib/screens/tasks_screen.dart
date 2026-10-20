@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../data/repositories.dart';
 import '../models/task.dart';
+import '../state/offline_mode.dart';
 import '../state/task_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -49,7 +50,7 @@ class TasksScreen extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
-                  child: Text('$todayCap · активных: ${store.activeCount}', style: TextStyle(fontSize: 13, color: context.pal.muted)),
+                  child: Text('$todayCap · активных: ${store.activeCount}${store.isOffline ? ' · офлайн' : ''}', style: TextStyle(fontSize: 13, color: context.pal.muted)),
                 ),
               ),
               SliverToBoxAdapter(
@@ -92,6 +93,12 @@ class TasksScreen extends StatelessWidget {
                     children: [
                       EmptyState(icon: Icons.cloud_off_rounded, title: 'Не удалось загрузить задачи', subtitle: store.error),
                       TextButton(onPressed: store.load, child: const Text('Повторить')),
+                      if (!store.isOffline)
+                        TextButton.icon(
+                          onPressed: () => context.read<OfflineMode>().start(),
+                          icon: const Icon(Icons.cloud_off_rounded, size: 18),
+                          label: const Text('Работать без интернета'),
+                        ),
                     ],
                   ),
                 )
