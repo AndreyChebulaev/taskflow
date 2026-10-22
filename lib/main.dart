@@ -25,6 +25,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsStore(prefs);
   final offline = OfflineMode(prefs);
+  if (offline.active) await offline.data.seedHistoryIfNeeded();
   final notifications = NotificationService();
   await notifications.init();
 

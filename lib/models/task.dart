@@ -70,6 +70,7 @@ class Task {
   final bool isDone;
   final DateTime createdAt;
   final int? reminderOffset; // минут до дедлайна; null — без напоминания
+  final DateTime? completedAt; // когда отмечена выполненной (ФТ-18)
 
   const Task({
     required this.id,
@@ -82,6 +83,7 @@ class Task {
     this.isDone = false,
     required this.createdAt,
     this.reminderOffset,
+    this.completedAt,
   });
 
   factory Task.fromMap(Map<String, dynamic> m) => Task(
@@ -95,6 +97,7 @@ class Task {
         isDone: m['is_done'] as bool? ?? false,
         createdAt: DateTime.parse(m['created_at'] as String).toLocal(),
         reminderOffset: _reminderFrom(m['reminders']),
+        completedAt: m['completed_at'] == null ? null : DateTime.parse(m['completed_at'] as String).toLocal(),
       );
 
   /// Напоминание приходит вложенным списком: select('*, reminders(offset_minutes)').
@@ -106,7 +109,8 @@ class Task {
     return null;
   }
 
-  Task copyWith({bool? isDone, bool clearCategory = false, int? reminderOffset, bool clearReminder = false}) => Task(
+  /// При смене isDone время выполнения ставится или сбрасывается автоматически.
+  Task copyWith({bool? isDone, bool clearCategory = false, int? reminderOffset, bool clearReminder = false, DateTime? completedAt}) => Task(
         id: id,
         title: title,
         description: description,
@@ -117,7 +121,14 @@ class Task {
         isDone: isDone ?? this.isDone,
         createdAt: createdAt,
         reminderOffset: clearReminder ? null : (reminderOffset ?? this.reminderOffset),
+        completedAt: isDone == null
+            ? (completedAt ?? this.completedAt)
+            : (isDone ? (completedAt ?? this.completedAt ?? DateTime.now()) : null),
       );
+
+  /// Дата выполнения для статистики. У задач, выполненных до появления
+  /// поля completed_at, берём срок или дату создания.
+  DateTime? get doneAt => isDone ? (completedAt ?? dueAt ?? createdAt) : null;
 
   /// Момент напоминания или null, если его нет.
   DateTime? get remindAt =>

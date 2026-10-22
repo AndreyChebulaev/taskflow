@@ -8,6 +8,7 @@ import '../state/offline_mode.dart';
 import '../state/task_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/quick_add.dart';
 import '../widgets/task_card.dart';
 import 'task_sheet.dart';
 
@@ -53,6 +54,8 @@ class TasksScreen extends StatelessWidget {
                   child: Text('$todayCap · активных: ${store.activeCount}${store.isOffline ? ' · офлайн' : ''}', style: TextStyle(fontSize: 13, color: context.pal.muted)),
                 ),
               ),
+              // Умный ввод одной строкой (ФТ-17)
+              const SliverToBoxAdapter(child: QuickAddBar()),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),

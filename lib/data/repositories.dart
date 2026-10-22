@@ -82,7 +82,11 @@ class TaskRepository {
   }
 
   Future<void> setDone(String id, bool done) async {
-    await _db.from('tasks').update({'is_done': done}).eq('id', id);
+    // completed_at нужен для серий и тепловой карты (ФТ-18)
+    await _db.from('tasks').update({
+      'is_done': done,
+      'completed_at': done ? DateTime.now().toUtc().toIso8601String() : null,
+    }).eq('id', id);
   }
 
   /// Напоминания удалятся каскадно (on delete cascade).

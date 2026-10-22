@@ -5,6 +5,7 @@ import '../data/repositories.dart';
 import '../models/category.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
+import 'productivity.dart';
 import 'settings_store.dart';
 
 enum TaskSort { byDue, byPriority }
@@ -142,6 +143,19 @@ class TaskStore extends ChangeNotifier {
     final end = start.add(const Duration(days: 7));
     final week = _tasks.where((t) => t.dueAt != null && !t.dueAt!.isBefore(start) && t.dueAt!.isBefore(end));
     return (done: week.where((t) => t.isDone).length, total: week.length);
+  }
+
+  /// Серии, тепловая карта и достижения (ФТ-18).
+  Productivity get productivity => Productivity(_tasks.map((t) => t.doneAt).whereType<DateTime>());
+
+  /// Создать категорию, если её ещё нет (для умного ввода #новая), и вернуть её id.
+  Future<String> ensureCategory(String name, String colorHex) async {
+    final lower = name.trim().toLowerCase();
+    for (final c in _categories) {
+      if (c.name.toLowerCase() == lower) return c.id;
+    }
+    await addCategory(name, colorHex);
+    return _categories.last.id;
   }
 
   static bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;

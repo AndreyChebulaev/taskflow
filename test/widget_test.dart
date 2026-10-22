@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:todo_app/data/local_repositories.dart';
 import 'package:todo_app/data/repositories.dart';
 import 'package:todo_app/models/task.dart';
+import 'package:todo_app/services/quick_parser.dart';
+import 'package:todo_app/state/productivity.dart';
 import 'package:todo_app/state/settings_store.dart';
 
 /// Модульные тесты логики задач (запуск: flutter test).
@@ -154,10 +156,13 @@ void main() {
       await data.seedIfEmpty();
       expect(data.categories.length, 3);
       final tasks = await LocalTaskRepository(data).fetchAll();
-      expect(tasks.length, 7);
-      expect(tasks.where((t) => t.isDone).length, 1);
+      // 7 стартовых задач + история выполненных для тепловой карты
+      expect(tasks.where((t) => !t.isDone).length, 6);
+      expect(tasks.where((t) => t.isDone).length, greaterThan(20));
+      expect(tasks.where((t) => t.isDone).every((t) => t.completedAt != null), isTrue);
       await data.seedIfEmpty(); // повторно не добавляет
       expect(data.categories.length, 3);
+      expect((await LocalTaskRepository(data).fetchAll()).length, tasks.length);
     });
 
     test('создание, изменение, выполнение и удаление задачи', () async {
@@ -170,7 +175,11 @@ void main() {
       final u = await repo.update(t.id, TaskDraft.fromTask(t)..title = 'Тест 2');
       expect(u.title, 'Тест 2');
       await repo.setDone(t.id, true);
-      expect((await repo.fetchAll()).single.isDone, isTrue);
+      final done = (await repo.fetchAll()).single;
+      expect(done.isDone, isTrue);
+      expect(done.completedAt, isNotNull);
+      await repo.setDone(t.id, false);
+      expect((await repo.fetchAll()).single.completedAt, isNull);
       await repo.delete(t.id);
       expect(await repo.fetchAll(), isEmpty);
     });
@@ -190,6 +199,112 @@ void main() {
       await cats.create('Спорт', '#2EC4B6');
       await expectLater(cats.create('спорт', '#FF7A59'), throwsA(isA<DuplicateNameException>()));
       expect(humanError(const DuplicateNameException()), 'Такое название уже есть');
+    });
+  });
+
+  group('Умный ввод (ФТ-17)', () {
+    final now = DateTime(2026, 10, 22, 16, 0); // четверг
+    const cats = {'c1': 'Учёба', 'c2': 'Работа', 'c3': 'Дом'};
+    QuickParse parse(String s) => QuickParser.parse(s, now: now, categories: cats);
+
+    test('полная строка: дата, время, приоритет, категория, повтор, напоминание', () {
+      final r = parse('Сдать лабу завтра в 18:00 !важно #учёба каждую неделю напомни за час');
+      expect(r.title, 'Сдать лабу');
+      expect(r.dueAt, DateTime(2026, 10, 23, 18, 0));
+      expect(r.priority, 1);
+      expect(r.categoryId, 'c1');
+      expect(r.repeat, 'weekly');
+      expect(r.reminderOffset, 60);
+      expect(r.tokens.length, 6);
+    });
+
+    test('обычный текст остаётся названием', () {
+      final r = parse('Купить молоко');
+      expect(r.title, 'Купить молоко');
+      expect(r.dueAt, isNull);
+      expect(r.tokens, isEmpty);
+    });
+
+    test('только время: сегодня, а если прошло — завтра', () {
+      expect(parse('Позвонить маме в 19').dueAt, DateTime(2026, 10, 22, 19));
+      expect(parse('Позвонить маме в 10').dueAt, DateTime(2026, 10, 23, 10));
+      expect(parse('Встреча 15:30').dueAt, DateTime(2026, 10, 23, 15, 30));
+    });
+
+    test('день недели, «вечера», категория по началу слова', () {
+      final r = parse('Встреча в пятницу в 7 вечера #раб !');
+      expect(r.title, 'Встреча');
+      expect(r.dueAt, DateTime(2026, 10, 23, 19));
+      expect(r.categoryId, 'c2');
+      expect(r.priority, 1);
+    });
+
+    test('даты: 25.10, 1 декабря, 01.01 — следующий год', () {
+      expect(parse('Отчёт к 25.10 !2').dueAt, DateTime(2026, 10, 25, 18));
+      expect(parse('Отчёт к 25.10 !2').priority, 2);
+      expect(parse('Курсовая до 1 декабря').dueAt, DateTime(2026, 12, 1, 18));
+      expect(parse('Новый год 01.01').dueAt, DateTime(2027, 1, 1, 18));
+    });
+
+    test('относительные сроки: через 3 дня, через 2 часа', () {
+      expect(parse('Доклад через 3 дня').dueAt, DateTime(2026, 10, 25, 18));
+      expect(parse('Таблетка через 2 часа').dueAt, DateTime(2026, 10, 22, 18));
+    });
+
+    test('каждый понедельник утром и новая категория', () {
+      final r = parse('Пробежка каждый понедельник утром #спорт');
+      expect(r.repeat, 'weekly');
+      expect(r.dueAt, DateTime(2026, 10, 26, 9));
+      expect(r.categoryId, isNull);
+      expect(r.newCategoryName, 'Спорт');
+    });
+
+    test('«срочно» и низкий приоритет', () {
+      expect(parse('Срочно купить билеты послезавтра').priority, 1);
+      expect(parse('Срочно купить билеты послезавтра').title, 'Купить билеты');
+      expect(parse('Глава 2 и 3 сегодня вечером !низкий').priority, 3);
+    });
+  });
+
+  group('Продуктивность (ФТ-18)', () {
+    final now = DateTime(2026, 10, 22, 16);
+    DateTime ago(int days, [int hour = 19]) => DateTime(2026, 10, 22 - days, hour);
+
+    test('серия до вчерашнего дня не сгорает, рекорд считается отдельно', () {
+      final p = Productivity([ago(1), ago(2), ago(2, 8), ago(3), ago(4), ago(10), ago(11), ago(12), ago(13), ago(14), ago(15), ago(16)], now: now);
+      expect(p.currentStreak, 4);
+      expect(p.bestStreak, 7);
+      expect(p.countOn(ago(2)), 2);
+      expect(p.total, 12);
+    });
+
+    test('серия прерывается после пропущенного дня', () {
+      expect(Productivity([ago(2)], now: now).currentStreak, 0);
+      expect(Productivity([ago(0), ago(1)], now: now).currentStreak, 2);
+      // переход через месяц
+      expect(Productivity([DateTime(2026, 10, 31, 20), DateTime(2026, 11, 1, 10)], now: DateTime(2026, 11, 1, 12)).currentStreak, 2);
+    });
+
+    test('уровни тепловой карты и достижения', () {
+      expect([0, 1, 2, 3, 4, 9].map(Productivity.level).toList(), [0, 1, 2, 3, 3, 4]);
+      final a = {for (final x in Productivity([ago(1, 8), ago(2, 7), ago(3)], now: now).achievements) x.id: x};
+      expect(a['first']!.unlocked, isTrue);
+      expect(a['ten']!.unlocked, isFalse);
+      expect(a['streak3']!.unlocked, isTrue);
+      expect(a['early']!.progress, 2);
+    });
+
+    test('склонение', () {
+      expect([1, 2, 5, 11, 21, 22].map((n) => plural(n, 'день', 'дня', 'дней')).toList(), ['день', 'дня', 'дней', 'дней', 'день', 'дня']);
+    });
+
+    test('выполненная задача получает время выполнения', () {
+      final t = Task(id: '0f3a9c1e-0000-4000-a000-000000000000', title: 'Т', createdAt: DateTime(2026, 10, 1));
+      final done = t.copyWith(isDone: true);
+      expect(done.completedAt, isNotNull);
+      expect(done.doneAt, done.completedAt);
+      expect(done.copyWith(isDone: false).completedAt, isNull);
+      expect(t.doneAt, isNull);
     });
   });
 }

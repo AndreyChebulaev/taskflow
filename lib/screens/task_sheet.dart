@@ -12,7 +12,7 @@ import '../widgets/common.dart';
 /// Экран 07: нижняя панель создания и редактирования задачи
 /// (ФТ-4, ФТ-5, ФТ-7, ФТ-9). Если [initialDate] задана — дедлайн
 /// по умолчанию ставится на этот день (используется из календаря).
-Future<void> showTaskSheet(BuildContext context, {Task? task, DateTime? initialDate}) {
+Future<void> showTaskSheet(BuildContext context, {Task? task, DateTime? initialDate, TaskDraft? draft}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -20,14 +20,17 @@ Future<void> showTaskSheet(BuildContext context, {Task? task, DateTime? initialD
     showDragHandle: true,
     backgroundColor: context.pal.card,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-    builder: (_) => TaskSheet(task: task, initialDate: initialDate),
+    builder: (_) => TaskSheet(task: task, initialDate: initialDate, draft: draft),
   );
 }
 
 class TaskSheet extends StatefulWidget {
-  const TaskSheet({super.key, this.task, this.initialDate});
+  const TaskSheet({super.key, this.task, this.initialDate, this.draft});
   final Task? task;
   final DateTime? initialDate;
+
+  /// Заполненный черновик новой задачи (из умного ввода, ФТ-17).
+  final TaskDraft? draft;
 
   @override
   State<TaskSheet> createState() => _TaskSheetState();
@@ -47,6 +50,8 @@ class _TaskSheetState extends State<TaskSheet> {
     super.initState();
     if (widget.task != null) {
       _draft = TaskDraft.fromTask(widget.task!);
+    } else if (widget.draft != null) {
+      _draft = widget.draft!;
     } else {
       final d = widget.initialDate;
       _draft = TaskDraft(

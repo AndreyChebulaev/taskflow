@@ -6,6 +6,7 @@ import '../state/offline_mode.dart';
 import '../state/task_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/productivity_view.dart';
 import 'settings_screen.dart';
 
 /// Экран 05: профиль и статистика (ФТ-15). Отсюда открываются настройки (ФТ-16).
@@ -108,6 +109,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                // Серия дней, тепловая карта и достижения (ФТ-18)
+                ProductivityView(stats: store.productivity),
                 const SizedBox(height: 12),
                 ListTileCard(
                   leading: _RoundIcon(Icons.settings_outlined),

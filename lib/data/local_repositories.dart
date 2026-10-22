@@ -64,6 +64,7 @@ class LocalData {
           'priority': priority,
           'repeat': repeat,
           'is_done': done,
+          'completed_at': done ? due?.toUtc().toIso8601String() : null,
           'created_at': now(),
           'reminders': reminder == null ? [] : [{'offset_minutes': reminder}],
         };
@@ -76,6 +77,56 @@ class LocalData {
       task('Курсовая работа', study, at(12, 18), 1),
       task('Купить продукты', home, at(-1, 19), 2, done: true),
     ]);
+    await _prefs.setBool(_historyKey, false);
+    await seedHistoryIfNeeded();
+  }
+
+  static const _historyKey = 'offline_history_seeded';
+
+  /// История выполненных задач за последние недели — чтобы на тепловой карте,
+  /// в серии дней и достижениях (ФТ-18) сразу было что показать.
+  Future<void> seedHistoryIfNeeded() async {
+    if (_prefs.getBool(_historyKey) ?? false) return;
+    final cats = categories;
+    String? cat(String name) {
+      for (final c in cats) {
+        if (c['name'] == name) return c['id'] as String;
+      }
+      return null;
+    }
+
+    const List<(String, String?)> titles = [
+      ('Пробежка', null), ('Повторить конспект', 'Учёба'), ('Разобрать почту', 'Работа'),
+      ('Лабораторная работа', 'Учёба'), ('Сходить в магазин', 'Дом'), ('Тренировка', null),
+      ('Прочитать статью', 'Учёба'), ('Созвон с командой', 'Работа'), ('Уборка', 'Дом'),
+    ];
+    // [дней назад, час выполнения]; 1–4 дня назад подряд — текущая серия
+    const history = [
+      [1, 19], [1, 8], [2, 20], [3, 7], [3, 18], [4, 21], [6, 19], [7, 8], [7, 17], [8, 19], [9, 20],
+      [10, 18], [12, 19], [13, 8], [14, 20], [14, 21], [15, 19], [17, 18], [20, 19], [21, 20],
+      [22, 19], [24, 18], [27, 20], [28, 19], [31, 19], [35, 18], [38, 20], [42, 19],
+    ];
+    final today = DateTime.now();
+    final rows = tasks;
+    for (var i = 0; i < history.length; i++) {
+      final t = titles[i % titles.length];
+      final at = DateTime(today.year, today.month, today.day - history[i][0], history[i][1], 15).toUtc().toIso8601String();
+      rows.add({
+        'id': newId(),
+        'title': t.$1,
+        'description': null,
+        'category_id': t.$2 == null ? null : cat(t.$2!),
+        'due_at': at,
+        'priority': 2,
+        'repeat': 'none',
+        'is_done': true,
+        'completed_at': at,
+        'created_at': at,
+        'reminders': [],
+      });
+    }
+    await saveTasks(rows);
+    await _prefs.setBool(_historyKey, true);
   }
 }
 
@@ -84,10 +135,11 @@ class LocalTaskRepository implements TaskRepository {
   LocalTaskRepository(this._data);
   final LocalData _data;
 
-  static Map<String, dynamic> _row(String id, TaskDraft d, {required bool isDone, required String createdAt}) => {
+  static Map<String, dynamic> _row(String id, TaskDraft d, {required bool isDone, required String createdAt, String? completedAt}) => {
         ...d.toMap(),
         'id': id,
         'is_done': isDone,
+        'completed_at': completedAt,
         'created_at': createdAt,
         'reminders': d.effectiveReminder == null ? [] : [{'offset_minutes': d.effectiveReminder}],
       };
@@ -107,7 +159,10 @@ class LocalTaskRepository implements TaskRepository {
     final rows = _data.tasks;
     final i = rows.indexWhere((r) => r['id'] == id);
     if (i < 0) throw StateError('Задача не найдена');
-    rows[i] = _row(id, d, isDone: rows[i]['is_done'] as bool? ?? false, createdAt: rows[i]['created_at'] as String);
+    rows[i] = _row(id, d,
+        isDone: rows[i]['is_done'] as bool? ?? false,
+        createdAt: rows[i]['created_at'] as String,
+        completedAt: rows[i]['completed_at'] as String?);
     await _data.saveTasks(rows);
     return Task.fromMap(rows[i]);
   }
@@ -116,7 +171,10 @@ class LocalTaskRepository implements TaskRepository {
   Future<void> setDone(String id, bool done) async {
     final rows = _data.tasks;
     for (final r in rows) {
-      if (r['id'] == id) r['is_done'] = done;
+      if (r['id'] == id) {
+        r['is_done'] = done;
+        r['completed_at'] = done ? LocalData.now() : null;
+      }
     }
     await _data.saveTasks(rows);
   }

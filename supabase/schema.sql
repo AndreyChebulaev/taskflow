@@ -42,6 +42,7 @@ create table public.tasks (
   priority     smallint not null default 2 check (priority between 1 and 3),   -- 1 высокий, 2 средний, 3 низкий
   repeat       text not null default 'none' check (repeat in ('none', 'daily', 'weekly', 'monthly')),
   is_done      boolean not null default false,
+  completed_at timestamptz,                                                   -- ФТ-18: когда выполнена (серии, тепловая карта)
   created_at   timestamptz not null default now()
 );
 
@@ -62,6 +63,7 @@ create index tasks_user_due_idx      on public.tasks (user_id, due_at);
 create index tasks_category_idx      on public.tasks (category_id);
 create index categories_user_idx     on public.categories (user_id);
 create index reminders_task_idx      on public.reminders (task_id);
+create index tasks_user_completed_idx on public.tasks (user_id, completed_at) where completed_at is not null;
 
 -- ---------- 6. Row Level Security (НФТ-2) ----------
 -- Каждый пользователь видит и меняет только свои данные.

@@ -16,6 +16,7 @@ class OfflineMode extends ChangeNotifier {
 
   Future<void> start() async {
     await data.seedIfEmpty();
+    await data.seedHistoryIfNeeded(); // для данных, созданных до версии с ФТ-18
     await _prefs.setBool(_key, true);
     notifyListeners();
   }
